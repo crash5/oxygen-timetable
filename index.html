@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+    <title>Oxygen Wellness Orarend</title>
+    <style>
+        * {
+            margin-left: auto;
+            margin-right: auto;
+        }
+        table {
+            border: 1px solid;
+        }
+        .class-is-cancelled {
+            background-color: lightgrey;
+            color: grey;
+            text-decoration: line-through;
+        }
+        .class-is-almostfull {
+            background-color: yellow;
+        }
+        .class-is-full {
+            background-color: salmon;
+        }
+        .day {
+            background-color: lightblue;
+            text-align: center;
+            text-decoration: underline;
+            font-weight: bold;
+            font-size: larger;
+        }
+    </style>
+</head>
+<body>
+    <div id="content">
+        <table>
+            <tbody id="classes"></tbody>
+        </table>
+    </div>
+    <script>
+        'use strict';
+        function parse_class(element) {
+            const trainer = element.trainer.replace('<span class="trainer">', '').replace('</span>', '');
+            const class_location = element.location.replace('<span class="location">', '').replace('</span>', '');
+            const class_name = element.classes.replace('<span class="class">', '').replace('</span>', '');
+
+            const [year, month, day] = element.date.split('.');
+            const [start_hour, start_minute] = element.start.split(':');
+            const [end_hour, end_minute] = element.end.split(':');
+            const start_date = new Date(year, month - 1, day, start_hour, start_minute);
+            const end_date = new Date(year, month - 1, day, end_hour, end_minute);
+
+            const [raw_max_number, raw_actual_number] = element.number.split(' / ')
+            const max_number = raw_max_number.replace('<span class="maxNumber">', '').replace('</span>', '');
+            const actual_number = raw_actual_number.replace('<span class="actualNumber">', '').replace('</span>', '');
+
+            let is_cancelled = false;
+            if (trainer == 'A héten az óra elmarad!') {
+                is_cancelled = true;
+            }
+            if (class_name == 'A héten elmarad!') {
+                is_cancelled = true;
+            }
+
+            return {
+                start: start_date,
+                end: end_date,
+                trainer: trainer,
+                max_number: max_number,
+                actual_number: actual_number,
+                location: class_location,
+                name: class_name,
+                is_cancelled: is_cancelled
+            };
+        }
+
+        function separate_by_date(classess) {
+            let by_day = {};
+            classess.forEach(item => {
+                const date = item.start.toLocaleString('hu', {
+                    month: 'long',
+                    day: '2-digit',
+                    weekday: 'long',
+                });
+                if (!by_day[date]) {
+                    by_day[date] = [];
+                }
+                by_day[date].push(item);
+            })
+            return by_day;
+        }
+
+        function add_row(table, element) {
+            const row = table.insertRow();
+            row.insertCell().innerHTML = element.start.toLocaleString('hu', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            row.insertCell().innerHTML = element.name;
+            row.insertCell().innerHTML = element.trainer;
+            row.insertCell().innerHTML = `${element.actual_number} / ${element.max_number}`;
+            row.insertCell().innerHTML = element.location;
+
+            // sometimes class is overbooked (>=)
+            if (element.actual_number / element.max_number >= 1) {
+                row.classList.add('class-is-full');
+            }
+            if (element.actual_number / element.max_number > 0.7) {
+                row.classList.add('class-is-almostfull');
+            }
+            if (element.is_cancelled) {
+                row.classList.add('class-is-cancelled');
+            }
+        }
+
+        function add_day_row(table, day) {
+            const row = table.insertRow();
+            row.classList.add('day');
+            const cell = row.insertCell();
+            cell.innerHTML = day;
+            cell.colSpan = 5;
+        }
+
+        function populate_table(table, elements) {
+            for (const [key, value] of Object.entries(elements)) {
+                add_day_row(table, key)
+                value.forEach(element => add_row(table, element))
+            }
+        }
+
+        (async() => {
+            const url = 'https://foglalas.wellnessgate.hu/api.php?api_key=459a629d1bf49bdbe99ddc94e2487f19f7e30d39&logged=0&action=get_timetable'
+            // const url = 'http://127.0.0.1/oxy.json'
+            const raw = await fetch(url, { method: 'GET' })
+            const json = await raw.json()
+
+            const classes = json.reservations.datas.map(element => parse_class(element));
+            const classes_by_date = separate_by_date(classes);
+            const table = document.getElementById('classes');
+            populate_table(table, classes_by_date)
+        })();
+    </script>
+</body>
+</html>
